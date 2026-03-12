@@ -3,6 +3,9 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebRTCController;
+use App\Http\Controllers\AgoraController;
+
+Route::get('/agora-token',[AgoraController::class,'token']);
 
 Route::get('/', function () {
     return view('welcome');
@@ -18,12 +21,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-Route::get('/call', [WebRTCController::class, 'index']);
+Route::get('/call', function() {return view('call');});
 
-Route::post('/offer', [WebRTCController::class, 'storeOffer']);
-Route::get('/offer/{room}', [WebRTCController::class, 'getOffer']);
-
-Route::post('/answer', [WebRTCController::class, 'storeAnswer']);
-Route::get('/answer/{room}', [WebRTCController::class, 'getAnswer']);
+Route::get('/agora-token', [AgoraController::class, 'token']);
 
 require __DIR__.'/auth.php';
