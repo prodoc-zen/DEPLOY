@@ -1,59 +1,286 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Laravel Deployment on Vercel
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This guide explains how to deploy a **Laravel** application to **Vercel** using a serverless PHP runtime.
 
-## About Laravel
+Since Laravel normally expects a traditional PHP server (Apache/Nginx), we configure a **serverless entry point** and routing so Vercel can execute the application properly.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+# Prerequisites
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Before starting, make sure you have:
 
-## Learning Laravel
+* PHP installed
+* Composer installed
+* Node.js and npm installed
+* A Laravel project ready
+* A Vercel account
+* Vercel CLI installed globally
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Install Vercel CLI if needed:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+npm install -g vercel
+```
 
-## Laravel Sponsors
+---
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+# Step 1 — Create Serverless Entry Point
 
-### Premium Partners
+Inside your Laravel project root, create a folder:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```
+api
+```
 
-## Contributing
+Inside the `api` folder, create a file:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```
+lambda.php
+```
 
-## Code of Conduct
+Paste the following code inside `api/lambda.php`:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```php
+<?php
 
-## Security Vulnerabilities
+use Illuminate\Foundation\Application;
+use Illuminate\Http\Request;
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+define('LARAVEL_START', microtime(true));
 
-## License
+// Determine if the application is in maintenance mode...
+if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
+    require $maintenance;
+}
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+// Register the Composer autoloader...
+require __DIR__.'/../vendor/autoload.php';
+
+// Bootstrap Laravel and handle the request...
+/** @var Application $app */
+$app = require_once __DIR__.'/../bootstrap/app.php';
+
+$app->handleRequest(Request::capture());
+```
+
+This file acts as the **serverless function entry point** for Laravel.
+
+---
+
+# Step 2 — Force HTTPS in Production
+
+Open:
+
+```
+app/Providers/AppServiceProvider.php
+```
+
+Import the URL facade at the top:
+
+```php
+use Illuminate\Support\Facades\URL;
+```
+
+Inside the `boot()` method add:
+
+```php
+if (config('app.env') === 'production') {
+    URL::forceScheme('https');
+}
+```
+
+This ensures Laravel generates HTTPS URLs in production.
+
+---
+
+# Step 3 — Create `.vercelignore`
+
+In the **project root**, create:
+
+```
+.vercelignore
+```
+
+Add the following:
+
+```
+public/index.php
+```
+
+This prevents Vercel from using Laravel’s default entry point.
+
+---
+
+# Step 4 — Create `vercel.json`
+
+In the **project root**, create:
+
+```
+vercel.json
+```
+
+Add the following configuration:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "functions": {
+    "api/lambda.php": {
+      "runtime": "vercel-php@0.7.4"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/lambda.php"
+    }
+  ],
+  "buildCommand": "echo skip..."
+}
+```
+
+Explanation:
+
+* `functions` tells Vercel to run PHP using a serverless runtime.
+* `rewrites` routes all requests to Laravel.
+* `outputDirectory` points to the public folder.
+
+---
+
+# Step 5 — Modify `composer.json`
+
+Open `composer.json`.
+
+Locate the `scripts` section and add a **vercel script** below `pre-package-uninstall`.
+
+Example:
+
+```json
+"vercel": [
+    "npm run build",
+    "mkdir -p /vercel/output/static",
+    "cp -r public/build /vercel/output/static/"
+]
+```
+
+This ensures frontend assets are copied during deployment.
+
+---
+
+# Step 6 — Configure Environment Variables
+
+Update your `.env` file for production:
+
+```
+APP_NAME=Laravel
+APP_ENV=production
+APP_KEY=[generate using php artisan key:generate]
+APP_DEBUG=true
+APP_URL=[your vercel deployment URL]
+
+APP_CONFIG_CACHE=/tmp/config.php
+APP_ROUTES_CACHE=/tmp/routes.php
+APP_EVENTS_CACHE=/tmp/events.php
+APP_PACKAGES_CACHE=/tmp/packages.php
+APP_SERVICES_CACHE=/tmp/services.php
+
+VIEW_COMPILED_PATH=/tmp/views
+
+LOG_CHANNEL=stderr
+SESSION_DRIVER=cookie
+ASSET_URL=/
+
+CACHE_DRIVER=array
+CACHE_STORE=array
+```
+
+Then add your **database configuration** as required.
+
+Example:
+
+```
+DB_CONNECTION=mysql
+DB_HOST=your-db-host
+DB_PORT=3306
+DB_DATABASE=your-db
+DB_USERNAME=your-user
+DB_PASSWORD=your-password
+```
+
+---
+
+# Step 7 — Deploy to Vercel
+
+Login to Vercel:
+
+```bash
+vercel login
+```
+
+Then deploy from your project folder:
+
+```bash
+vercel
+```
+
+Follow the CLI prompts.
+
+After deployment, Vercel will provide a URL such as:
+
+```
+https://your-project.vercel.app
+```
+
+---
+
+# Notes
+
+* Laravel runs using a **serverless PHP runtime**.
+* The `/tmp` directory is used because Vercel's filesystem is read-only.
+* Static assets are served from `/public`.
+
+---
+
+# Troubleshooting
+
+### Error: "No application encryption key has been specified"
+
+Generate an app key:
+
+```bash
+php artisan key:generate
+```
+
+Then update the `APP_KEY` in your `.env`.
+
+---
+
+### Build errors
+
+Make sure dependencies are installed:
+
+```bash
+composer install
+npm install
+npm run build
+```
+
+---
+
+# Summary
+
+Steps performed:
+
+1. Create `api/lambda.php`
+2. Force HTTPS in `AppServiceProvider`
+3. Add `.vercelignore`
+4. Configure `vercel.json`
+5. Add Vercel script to `composer.json`
+6. Configure `.env`
+7. Deploy with Vercel CLI
+
+---
+
+Your Laravel application should now run successfully on Vercel.
